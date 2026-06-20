@@ -1,20 +1,24 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, SafeAreaView } from 'react-native';
+
+// Mengimpor komponen LoginScreen dari folder src/screens
+import LoginScreen from './src/screens/LoginScreen'; 
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Menampilkan Layar Login */}
+      <LoginScreen />
+      
       <StatusBar style="auto" />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    // Background dasar aplikasi menggunakan Canvas Cream dari pedoman desain
+    backgroundColor: '#F3F0EE', 
   },
 });
