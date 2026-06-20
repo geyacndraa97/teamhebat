@@ -1,24 +1,27 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, SafeAreaView } from 'react-native';
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// Mengimpor komponen LoginScreen dari folder src/screens
-import LoginScreen from './src/screens/LoginScreen'; 
+import LoginScreen from './src/screens/LoginScreen';
+import Dashboard from './src/screens/dashboard';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Menampilkan Layar Login */}
-      <LoginScreen />
-      
-      <StatusBar style="auto" />
-    </SafeAreaView>
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="Login">
+        <Stack.Screen 
+          name="Login" 
+          component={LoginScreen} 
+          options={{ headerShown: false }} // Menyembunyikan header atas saat login
+        />
+        <Stack.Screen 
+          name="Dashboard" 
+          component={Dashboard} 
+          options={{ title: 'IoT Console Dashboard' }} 
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    // Background dasar aplikasi menggunakan Canvas Cream dari pedoman desain
-    backgroundColor: '#F3F0EE', 
-  },
-});

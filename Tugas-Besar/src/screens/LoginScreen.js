@@ -8,23 +8,64 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 
-const LoginScreen = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  // State untuk fitur Remember Me
-  const [rememberMe, setRememberMe] = useState(false);
+// Import modul Firestore dan konfigurasi database Anda
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig'; 
 
-  const handleLogin = () => {
-    // Fungsi dummy: Logika otentikasi Firebase/MQTT diabaikan sesuai instruksi
-    console.log("Tombol Masuk Ditekan");
-    console.log("Mencoba koneksi ke Node / Broker dengan kredensial:", email);
-    console.log("Status Remember Me:", rememberMe ? "Aktif" : "Tidak Aktif");
+const LoginScreen = ({ navigation }) => {
+  // 1. Mengubah state 'email' menjadi 'username'
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    // Validasi Input Kosong
+    if (!username || !password) {
+      Alert.alert('Perhatian', 'Username dan password tidak boleh kosong!');
+      return;
+    }
+
+    setLoading(true); 
+
+    try {
+      // Hilangkan spasi berlebih jika pengguna tidak sengaja mengetik spasi
+      const formattedUsername = username.trim();
+
+      // 2. Query ke Firebase: Mencari berdasarkan field 'username' dan 'password'
+      const q = query(
+        collection(db, 'users'),
+        where('username', '==', formattedUsername),
+        where('password', '==', password)
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      setLoading(false); 
+
+      // Jika data ditemukan (login berhasil)
+      if (!querySnapshot.empty) {
+        console.log("Login sukses. Status Remember Me:", rememberMe ? "Aktif" : "Tidak Aktif");
+        
+        // Langsung navigasi ke Dashboard 
+        navigation.replace('Dashboard'); 
+        
+      } else {
+        Alert.alert('Gagal', 'Username atau Password salah! Periksa kembali data akun Anda.');
+      }
+    } catch (error) {
+      setLoading(false); 
+      console.error("Firebase Auth Error: ", error);
+      Alert.alert('Error', 'Gagal terhubung ke database Firebase. Periksa koneksi internet Anda atau konfigurasi Firebase.');
+    }
   };
 
   const handleForgotPassword = () => {
-    console.log("Navigasi ke layar Lupa Kata Sandi");
+    Alert.alert('Informasi', 'Fitur Lupa Kata Sandi belum diimplementasikan.');
   };
 
   const toggleRememberMe = () => {
@@ -52,11 +93,10 @@ const LoginScreen = () => {
           <View style={styles.formContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Username" // 3. Mengubah placeholder UI menjadi Username
               placeholderTextColor="#696969"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={username}
+              onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -72,7 +112,7 @@ const LoginScreen = () => {
               autoCorrect={false}
             />
 
-            {/* Remember Me Section (Rata Kanan Bawah) */}
+            {/* Remember Me Section */}
             <View style={styles.rememberMeContainer}>
               <TouchableOpacity
                 style={styles.checkboxWrapper}
@@ -93,15 +133,20 @@ const LoginScreen = () => {
               style={styles.buttonPrimary}
               onPress={handleLogin}
               activeOpacity={0.8}
+              disabled={loading} 
             >
-              <Text style={styles.buttonPrimaryText}>Sign In</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color="#F3F0EE" />
+              ) : (
+                <Text style={styles.buttonPrimaryText}>Sign In</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.linkContainer}
               onPress={handleForgotPassword}
             >
-              {/* Tempat untuk link lupa password jika ingin ditambahkan nanti */}
+              <Text style={styles.linkText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
 
@@ -112,23 +157,20 @@ const LoginScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  // Surface & Background
   safeArea: {
     flex: 1,
-    backgroundColor: '#F3F0EE', // Canvas Cream
+    backgroundColor: '#F3F0EE', 
   },
   keyboardAvoid: {
     flex: 1,
   },
   container: {
     flex: 1,
-    paddingHorizontal: 32, // Skala ruang 32px
+    paddingHorizontal: 32, 
     justifyContent: 'center',
   },
-
-  // Typography & Headers
   headerContainer: {
-    marginBottom: 64, // Whitespace editorial yang luas
+    marginBottom: 64, 
   },
   eyebrowContainer: {
     flexDirection: 'row',
@@ -136,109 +178,106 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   eyebrowDot: {
-    color: '#CF4500', // Signal Orange untuk aksen dot
+    color: '#CF4500', 
     fontSize: 16,
     fontWeight: '700',
     marginRight: 8,
   },
   eyebrowText: {
-    color: '#696969', // Slate Gray
+    color: '#696969', 
     fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.56, // +4% tracking
-    textTransform: 'uppercase', //
+    letterSpacing: 0.56, 
+    textTransform: 'uppercase', 
   },
   title: {
-    color: '#141413', // Ink Black
-    fontSize: 36, // Skala H2
-    fontWeight: '500', //
-    letterSpacing: -0.72, // -2% negative letter-spacing khas editorial
-    lineHeight: 44, //
+    color: '#141413', 
+    fontSize: 36, 
+    fontWeight: '500', 
+    letterSpacing: -0.72, 
+    lineHeight: 44, 
   },
-
-  // Inputs & Forms (999px Radius)
   formContainer: {
-    marginBottom: 16, // PERBAIKAN DI SINI: Dikurangi dari 32px menjadi 16px untuk menaikkan tombol Sign In.
+    marginBottom: 16, 
   },
   input: {
-    backgroundColor: '#FFFFFF', //
-    borderColor: 'rgba(20, 20, 19, 0.3)', // Garis transparan halus dari Ink Black
-    borderWidth: 1, //
-    borderRadius: 999, // Pil Penuh
-    paddingVertical: 16, //
-    paddingHorizontal: 24, //
-    fontSize: 16, //
-    color: '#141413', // Ink Black
-    fontWeight: '400', // Pengganti weight 450
-    marginBottom: 24, //
+    backgroundColor: '#FFFFFF', 
+    borderColor: 'rgba(20, 20, 19, 0.3)', 
+    borderWidth: 1, 
+    borderRadius: 999, 
+    paddingVertical: 16, 
+    paddingHorizontal: 24, 
+    fontSize: 16, 
+    color: '#141413', 
+    fontWeight: '400', 
+    marginBottom: 24, 
   },
   inputPassword: {
-    marginBottom: 12, // Margin lebih kecil agar checkbox menempel dengan input password
+    marginBottom: 12, 
   },
-
-  // Custom Checkbox ("Remember Me")
   rememberMeContainer: {
-    alignItems: 'flex-end', // Rata kanan
-    marginBottom: 12, //
+    alignItems: 'flex-end', 
+    marginBottom: 12, 
   },
   checkboxWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4, //
+    paddingVertical: 4, 
   },
   checkbox: {
     width: 18,
     height: 18,
-    borderWidth: 1.5, //
-    borderColor: '#141413', // Ink Black
-    borderRadius: 4, // Radius kecil untuk elemen mikro
+    borderWidth: 1.5, 
+    borderColor: '#141413', 
+    borderRadius: 4, 
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
     backgroundColor: 'transparent',
   },
   checkboxActive: {
-    backgroundColor: '#141413', //
+    backgroundColor: '#141413', 
   },
   checkmark: {
-    color: '#F3F0EE', // Canvas Cream
-    fontSize: 12, //
+    color: '#F3F0EE', 
+    fontSize: 12, 
     fontWeight: 'bold',
   },
   rememberMeText: {
-    color: '#696969', // Slate Gray
-    fontSize: 14, //
+    color: '#696969', 
+    fontSize: 14, 
     fontWeight: '500',
   },
-
-  // Buttons & Links (20px Radius)
   actionContainer: {
-    marginTop: 8, //
+    marginTop: 8, 
   },
   buttonPrimary: {
-    backgroundColor: '#141413', // Ink Black
-    borderColor: '#141413', //
-    borderWidth: 1.5, //
-    borderRadius: 20, // Radius khas tombol
-    paddingVertical: 16, //
-    paddingHorizontal: 24, //
+    backgroundColor: '#141413', 
+    borderColor: '#141413', 
+    borderWidth: 1.5, 
+    borderRadius: 20, 
+    paddingVertical: 16, 
+    paddingHorizontal: 24, 
     alignItems: 'center',
-    marginBottom: 32, //
+    marginBottom: 22, 
+    height: 56, 
+    justifyContent: 'center',
   },
   buttonPrimaryText: {
-    color: '#F3F0EE', // Canvas Cream, bukan putih murni
-    fontSize: 16, //
-    fontWeight: '500', //
-    letterSpacing: -0.32, // -3% tightening
+    color: '#F3F0EE', 
+    fontSize: 16, 
+    fontWeight: '500', 
+    letterSpacing: -0.32, 
   },
   linkContainer: {
     alignItems: 'center',
-    paddingVertical: 8, //
+    paddingVertical: 8, 
   },
   linkText: {
-    color: '#696969', // Slate Gray
+    color: '#696969', 
     fontSize: 14,
     fontWeight: '500',
+    textDecorationLine: 'underline',
   },
 });
 
