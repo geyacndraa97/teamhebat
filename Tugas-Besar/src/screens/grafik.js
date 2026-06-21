@@ -1,55 +1,109 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import MainLayout from './MainLayout'; // Sesuaikan path jika berbeda
+import MainLayout from './MainLayout'; 
+
+// Import konfigurasi database Firebase Anda
+import { db } from '../firebaseConfig'; 
+import { doc, onSnapshot } from "firebase/firestore"; 
 
 const { width } = Dimensions.get('window');
 
 const GrafikScreen = ({ navigation }) => {
-  // Dummy data array (Nantinya diganti dengan data dari Firebase)
-  const labelsTime = ["10:00", "10:05", "10:10", "10:15", "10:20"];
+  // State untuk menyimpan antrean riwayat data grafik (maksimal 5 titik data)
+  const [labelsTime, setLabelsTime] = useState(["-", "-", "-", "-", "-"]);
+  const [ultrasonicHistory, setUltrasonicHistory] = useState([0, 0, 0, 0, 0]);
+  const [infraredHistory, setInfraredHistory] = useState([0, 0, 0, 0, 0]);
+  const [accXHistory, setAccXHistory] = useState([0, 0, 0, 0, 0]);
+  const [accYHistory, setAccYHistory] = useState([0, 0, 0, 0, 0]);
+  
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    // Referensi ke dokumen 'data sensor' di Firestore
+    const docRef = doc(db, 'sensors', 'data sensor');
+
+    // Berlangganan data Firestore secara Real-time
+    const unsubscribe = onSnapshot(docRef, (documentSnapshot) => {
+      if (documentSnapshot.exists()) {
+        const data = documentSnapshot.data();
+
+        // 1. Dapatkan waktu saat ini untuk label X-Axis (Format HH:mm:ss)
+        const now = new Date();
+        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+        // 2. Ekstrak nilai angka dari string database (misal "24.7 cm" -> 24.7 atau "0.04g" -> 0.04)
+        const rawDistance = data.ultrasonic?.distance || "0";
+        const distanceVal = parseFloat(rawDistance);
+
+        const rawInfrared = data.tcrt?.value || "0";
+        const infraredVal = parseFloat(rawInfrared);
+
+        const rawAccX = data.mpu?.accX || "0";
+        const accXVal = parseFloat(rawAccX);
+
+        const rawAccY = data.mpu?.accY || "0";
+        const accYVal = parseFloat(rawAccY);
+
+        // 3. Masukkan data baru ke dalam array state dan buang data terlama (Rolling FIFO Buffer)
+        setLabelsTime((prev) => [...prev.slice(1), timeString]);
+        setUltrasonicHistory((prev) => [...prev.slice(1), distanceVal]);
+        setInfraredHistory((prev) => [...prev.slice(1), infraredVal]);
+        setAccXHistory((prev) => [...prev.slice(1), accXVal]);
+        setAccYHistory((prev) => [...prev.slice(1), accYVal]);
+      } else {
+        console.log('Dokumen tidak ditemukan di Firestore!');
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching grafik data: ", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Format data objek untuk dimasukkan ke komponen LineChart kit
   const dataUltrasonic = {
     labels: labelsTime,
-    datasets: [{ data: [24.7, 22.1, 18.5, 15.0, 12.4] }] // Jarak dalam cm
+    datasets: [{ data: ultrasonicHistory }]
   };
 
   const dataInfrared = {
     labels: labelsTime,
-    datasets: [{ data: [842, 850, 910, 420, 210] }] // Nilai analog
+    datasets: [{ data: infraredHistory }]
   };
 
   const dataMPU = {
     labels: labelsTime,
     datasets: [
       {
-        data: [0.04, 0.06, 0.02, -0.01, 0.05], // AccX
+        data: accXHistory,
         color: (opacity = 1) => `rgba(207, 69, 0, ${opacity})`, // Signal Orange
       },
       {
-        data: [-0.15, -0.12, -0.10, -0.14, -0.16], // AccY
+        data: accYHistory,
         color: (opacity = 1) => `rgba(20, 20, 19, ${opacity})`, // Ink Black
       }
     ],
     legend: ["AccX (g)", "AccY (g)"]
   };
 
-  // Konfigurasi desain grafik
+  // Konfigurasi desain grafik asli Anda
   const chartConfig = {
     backgroundGradientFrom: "#FFFFFF",
     backgroundGradientTo: "#FFFFFF",
-    color: (opacity = 1) => `rgba(20, 20, 19, ${opacity})`, // Ink Black untuk garis default
-    labelColor: (opacity = 1) => `rgba(105, 105, 105, ${opacity})`, // Slate Gray untuk teks
-    strokeWidth: 2, // Ketebalan garis
+    color: (opacity = 1) => `rgba(20, 20, 19, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(105, 105, 105, ${opacity})`,
+    strokeWidth: 2,
     propsForDots: {
       r: "4",
       strokeWidth: "2",
-      stroke: "#CF4500", // Signal Orange untuk titik
+      stroke: "#CF4500",
     },
-    decimalPlaces: 1, // Angka di belakang koma
+    decimalPlaces: 1,
   };
 
-  // Lebar grafik dikurangi padding kiri-kanan layar dan card
   const chartWidth = width - 48 - 48; 
 
   return (
@@ -66,58 +120,63 @@ const GrafikScreen = ({ navigation }) => {
           <Text style={styles.subTitleText}>Tren data dari Firebase secara real-time</Text>
         </View>
 
-        {/* Chart Container */}
-        <View style={styles.cardsContainer}>
-          
-          {/* Chart 1: Ultrasonic */}
-          <View style={styles.chartCard}>
-            <Text style={styles.chartTitle}>Jarak Ultrasonik (cm)</Text>
-            <LineChart
-              data={dataUltrasonic}
-              width={chartWidth}
-              height={220}
-              chartConfig={chartConfig}
-              bezier // Membuat garis melengkung halus
-              style={styles.chartStyle}
-            />
-          </View>
+        {/* Cek status loading saat aplikasi pertama kali membaca data Firebase */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#CF4500" style={{ marginTop: 50 }} />
+        ) : (
+          <View style={styles.cardsContainer}>
+            
+            {/* Chart 1: Ultrasonic */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Jarak Ultrasonik (cm)</Text>
+              <LineChart
+                data={dataUltrasonic}
+                width={chartWidth}
+                height={220}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.chartStyle}
+              />
+            </View>
 
-          {/* Chart 2: Infrared */}
-          <View style={styles.chartCard}>
-            <Text style={styles.chartTitle}>Pembacaan Inframerah (Analog)</Text>
-            <LineChart
-              data={dataInfrared}
-              width={chartWidth}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.chartStyle}
-            />
-          </View>
+            {/* Chart 2: Infrared */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Pembacaan Inframerah (Analog)</Text>
+              <LineChart
+                data={dataInfrared}
+                width={chartWidth}
+                height={220}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.chartStyle}
+              />
+            </View>
 
-          {/* Chart 3: MPU6050 (Multi-line) */}
-          <View style={styles.chartCard}>
-            <Text style={styles.chartTitle}>Akselerometer MPU6050</Text>
-            <LineChart
-              data={dataMPU}
-              width={chartWidth}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.chartStyle}
-            />
-          </View>
+            {/* Chart 3: MPU6050 */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Akselerometer MPU6050</Text>
+              <LineChart
+                data={dataMPU}
+                width={chartWidth}
+                height={220}
+                chartConfig={chartConfig}
+                bezier
+                style={styles.chartStyle}
+              />
+            </View>
 
-        </View>
+          </View>
+        )}
       </ScrollView>
     </MainLayout>
   );
 };
 
+// Stylesheet desain asli milik Anda
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
-    paddingTop: 65, // <--- Tambahkan baris ini
+    paddingTop: 65,
     paddingBottom: 48,
   },
   headerSection: {
@@ -160,7 +219,7 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 32, // Sesuai dengan bahasa desain aplikasi Anda
+    borderRadius: 32,
     padding: 24,
     borderWidth: 1,
     borderColor: 'rgba(20, 20, 19, 0.05)',

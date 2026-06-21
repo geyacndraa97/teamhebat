@@ -1,6 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import MainLayout from './MainLayout'; // Pastikan path import benar
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import MainLayout from './MainLayout'; 
+
+// Import konfigurasi database Anda
+import { db } from '../firebaseConfig'; 
+import { doc, onSnapshot } from "firebase/firestore"; 
 
 const DashboardScreen = ({ navigation }) => {
   const systemStatus = {
@@ -9,11 +13,33 @@ const DashboardScreen = ({ navigation }) => {
     latency: "42ms",
   };
 
-  const dummySensorData = {
-    ultrasonic: { distance: "24.7 cm", status: "Object Detected" },
-    tcrt: { value: "842", condition: "Line Tracking Active" },
-    mpu: { accX: "0.04g", accY: "-0.15g", accZ: "0.98g", gyroX: "1.2°/s" }
-  };
+  // State untuk menyimpan data sensor dari Firestore
+  const [sensorData, setSensorData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Menghubungkan ke collection 'sensors' dan document 'data sensor'
+    const docRef = doc(db, 'sensors', 'data sensor');
+    
+    // Mendengarkan perubahan di Firestore secara Real-time
+    const unsubscribe = onSnapshot(docRef, 
+      (documentSnapshot) => {
+        if (documentSnapshot.exists()) {
+          setSensorData(documentSnapshot.data());
+        } else {
+          console.log('Dokumen "data sensor" tidak ditemukan di Firestore!');
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error mengambil data Firestore: ", error);
+        setLoading(false);
+      }
+    );
+
+    // Memutus koneksi listener saat keluar dari halaman untuk menghemat kuota Firebase
+    return () => unsubscribe();
+  }, []);
 
   return (
     <MainLayout 
@@ -22,67 +48,96 @@ const DashboardScreen = ({ navigation }) => {
       systemStatus={systemStatus.broker}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Header Dashboard */}
+        
+        {/* Header Section */}
         <View style={styles.headerSection}>
           <View style={styles.eyebrowContainer}>
             <Text style={styles.eyebrowDot}>•</Text>
             <Text style={styles.eyebrowText}>GATEWAY CONSOLE</Text>
           </View>
           <Text style={styles.mainTitle}>System Overview</Text>
-          <Text style={styles.subTitleText}>Firebase Sync: {systemStatus.sync} • Latency: {systemStatus.latency}</Text>
+          <Text style={styles.subTitleText}>
+            Firebase Sync: {systemStatus.sync} • Latency: {systemStatus.latency}
+          </Text>
         </View>
 
-        {/* Sensor Cards Section */}
-        <View style={styles.cardsContainer}>
-          <View style={styles.sensorCard}>
-            <View style={styles.cardEyebrowRow}>
-              <Text style={styles.cardDot}>•</Text>
-              <Text style={styles.cardEyebrow}>HC-SR04 ULTRASONIC</Text>
+        {/* Render Konten Berdasarkan Status Loading */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#F37338" style={{ marginTop: 50 }} />
+        ) : sensorData ? (
+          <View style={styles.cardsContainer}>
+            
+            {/* CARD 1: HC-SR04 ULTRASONIC */}
+            <View style={styles.sensorCard}>
+              <View style={styles.cardEyebrowRow}>
+                <Text style={styles.cardDot}>•</Text>
+                <Text style={styles.cardEyebrow}>HC-SR04 ULTRASONIC</Text>
+              </View>
+              {/* Mengambil field 'distance' di dalam map 'ultrasonic' */}
+              <Text style={styles.sensorValue}>
+                {sensorData.ultrasonic?.distance || '-'}
+              </Text>
+              {/* Mengambil field 'status' di dalam map 'ultrasonic' */}
+              <Text style={styles.sensorSubText}>
+                Status: {sensorData.ultrasonic?.status || '-'}
+              </Text>
             </View>
-            <Text style={styles.sensorValue}>{dummySensorData.ultrasonic.distance}</Text>
-            <Text style={styles.sensorSubText}>Status: {dummySensorData.ultrasonic.status}</Text>
-          </View>
 
-          <View style={styles.sensorCard}>
-            <View style={styles.cardEyebrowRow}>
-              <Text style={styles.cardDot}>•</Text>
-              <Text style={styles.cardEyebrow}>TCRT5000 INFRARED</Text>
+            {/* CARD 2: TCRT5000 INFRARED */}
+            <View style={styles.sensorCard}>
+              <View style={styles.cardEyebrowRow}>
+                <Text style={styles.cardDot}>•</Text>
+                <Text style={styles.cardEyebrow}>TCRT5000 INFRARED</Text>
+              </View>
+              {/* Mengambil field 'value' di dalam map 'tcrt' */}
+              <Text style={styles.sensorValue}>
+                {sensorData.tcrt?.value || '-'}
+              </Text>
+              {/* Mengambil field 'condition' di dalam map 'tcrt' */}
+              <Text style={styles.sensorSubText}>
+                Condition: {sensorData.tcrt?.condition || '-'}
+              </Text>
             </View>
-            <Text style={styles.sensorValue}>{dummySensorData.tcrt.value}</Text>
-            <Text style={styles.sensorSubText}>Condition: {dummySensorData.tcrt.condition}</Text>
-          </View>
 
-          <View style={styles.sensorCard}>
-            <View style={styles.cardEyebrowRow}>
-              <Text style={styles.cardDot}>•</Text>
-              <Text style={styles.cardEyebrow}>MPU6050 GYRO & ACCEL</Text>
+            {/* CARD 3: MPU6050 GYRO & ACCEL */}
+            <View style={styles.sensorCard}>
+              <View style={styles.cardEyebrowRow}>
+                <Text style={styles.cardDot}>•</Text>
+                <Text style={styles.cardEyebrow}>MPU6050 GYRO & ACCEL</Text>
+              </View>
+              <View style={styles.mpuGridRow}>
+                <View style={styles.mpuGridItem}>
+                  <Text style={styles.mpuLabel}>ACCEL X</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accX || '-'}</Text>
+                </View>
+                <View style={styles.mpuGridItem}>
+                  <Text style={styles.mpuLabel}>ACCEL Y</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accY || '-'}</Text>
+                </View>
+                <View style={styles.mpuGridItem}>
+                  <Text style={styles.mpuLabel}>ACCEL Z</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accZ || '-'}</Text>
+                </View>
+              </View>
+              <Text style={styles.sensorSubText}>
+                Gyroscope Rotation X: {sensorData.mpu?.gyroX || '-'}
+              </Text>
             </View>
-            <View style={styles.mpuGridRow}>
-              <View style={styles.mpuGridItem}>
-                <Text style={styles.mpuLabel}>ACCEL X</Text>
-                <Text style={styles.mpuValue}>{dummySensorData.mpu.accX}</Text>
-              </View>
-              <View style={styles.mpuGridItem}>
-                <Text style={styles.mpuLabel}>ACCEL Y</Text>
-                <Text style={styles.mpuValue}>{dummySensorData.mpu.accY}</Text>
-              </View>
-              <View style={styles.mpuGridItem}>
-                <Text style={styles.mpuLabel}>ACCEL Z</Text>
-                <Text style={styles.mpuValue}>{dummySensorData.mpu.accZ}</Text>
-              </View>
-            </View>
-            <Text style={styles.sensorSubText}>Gyroscope Rotation X: {dummySensorData.mpu.gyroX}</Text>
+
           </View>
-        </View>
+        ) : (
+          <Text style={styles.noDataText}>Data tidak tersedia di database</Text>
+        )}
       </ScrollView>
     </MainLayout>
   );
 };
 
+// Desain UI Stylesheet asli milik Anda
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
-    paddingTop: 65, // <--- Tambahkan baris ini
+    paddingTop: 65,
     paddingBottom: 48,
   },
   headerSection: {
@@ -180,6 +235,12 @@ const styles = StyleSheet.create({
     color: '#141413',
     fontWeight: '500',
   },
+  noDataText: {
+    textAlign: 'center', 
+    marginTop: 20, 
+    color: '#696969', 
+    fontSize: 16
+  }
 });
 
 export default DashboardScreen;

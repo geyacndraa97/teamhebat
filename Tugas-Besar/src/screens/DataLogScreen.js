@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,68 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import MainLayout from './MainLayout'; // Pastikan path import benar
+import MainLayout from './MainLayout';
+
+// IMPORT FIREBASE MODULES
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../firebaseConfig'; // Sesuaikan path ini jika firebaseConfig.js ada di luar folder screens
 
 const DataLogScreen = ({ navigation }) => {
-  const [logData, setLogData] = useState([
-    { id: '1', time: '10:45:02', sensor: 'Ultrasonic', value: '24.7 cm' },
-    { id: '2', time: '10:45:05', sensor: 'Infrared', value: '842' },
-    { id: '3', time: '10:45:08', sensor: 'MPU (AccX)', value: '0.04g' },
-    { id: '4', time: '10:46:12', sensor: 'Ultrasonic', value: '18.2 cm' },
-    { id: '5', time: '10:46:15', sensor: 'Infrared', value: '910' },
-    { id: '6', time: '10:47:01', sensor: 'MPU (GyroZ)', value: '1.5°/s' },
-  ]);
+  const [logData, setLogData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // FUNGSI UNTUK MENGAMBIL DATA REAL-TIME DARI FIRESTORE
+  useEffect(() => {
+    const q = query(collection(db, 'sensor_logs'));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedLogs = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+
+          // Memaksa format waktu pakai titik dua (menangani masalah 16.37.37 jadi 16:37:37)
+          const formattedTime = data.time ? data.time.replace(/\./g, ':') : '-';
+          
+          // Menambahkan satuan secara otomatis berdasarkan nama sensor (Opsional)
+          let formattedValue = data.value ? data.value : '-';
+          const sensorName = data.sensor ? data.sensor.toLowerCase() : '';
+          
+          if (sensorName.includes('ultrasonic') && !formattedValue.includes('cm')) {
+            formattedValue += ' cm';
+          } else if (sensorName.includes('infrared')) {
+            // Infrared biasanya tidak butuh satuan di contohmu
+          }
+
+          fetchedLogs.push({
+            id: doc.id,
+            time: formattedTime,
+            sensor: data.sensor || '-',
+            value: formattedValue,
+          });
+        });
+
+        // Urutkan data dari waktu terbaru ke terlama berdasarkan field 'time'
+        fetchedLogs.sort((a, b) => b.time.localeCompare(a.time));
+
+        setLogData(fetchedLogs);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching Firestore:", error);
+        Alert.alert('Error', 'Gagal mengambil data sensor dari database.');
+        setLoading(false);
+      }
+    );
+
+    // Cleanup listener saat pindah screen
+    return () => unsubscribe();
+  }, []);
 
   const downloadCSV = async () => {
     if (logData.length === 0) {
@@ -84,16 +132,25 @@ const DataLogScreen = ({ navigation }) => {
           <Text style={[styles.headerText, styles.colSensor]}>Sensor</Text>
           <Text style={[styles.headerText, styles.colValue]}>Nilai</Text>
         </View>
-        <FlatList
-          data={logData}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTableRow}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Belum ada data log yang tersimpan.</Text>
-          }
-        />
+        
+        {/* Indikator Loading Data */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#CF4500" />
+            <Text style={styles.loadingText}>Menarik data dari database...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={logData}
+            keyExtractor={(item) => item.id}
+            renderItem={renderTableRow}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>Belum ada data log yang tersimpan.</Text>
+            }
+          />
+        )}
       </View>
     </MainLayout>
   );
@@ -188,6 +245,7 @@ const styles = StyleSheet.create({
   cellText: {
     fontSize: 14,
     color: '#696969',
+    textTransform: 'capitalize', // Biar 'ultrasonic' jadi 'Ultrasonic'
   },
   cellValue: {
     fontSize: 15,
@@ -205,6 +263,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#696969',
+    fontSize: 14,
+  }
 });
 
 export default DataLogScreen;
