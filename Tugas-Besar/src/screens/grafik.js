@@ -3,9 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } fro
 import { LineChart } from 'react-native-chart-kit';
 import MainLayout from './MainLayout'; 
 
-// Import konfigurasi database Firebase Anda
-import { db } from '../firebaseConfig'; 
-import { doc, onSnapshot } from "firebase/firestore"; 
+// IMPORT FUNGSI AXIOS KITA
+import { fetchSensorData } from '../services/apiService'; 
 
 const { width } = Dimensions.get('window');
 
@@ -20,47 +19,47 @@ const GrafikScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Referensi ke dokumen 'data sensor' di Firestore
-    const docRef = doc(db, 'sensors', 'data sensor');
+    let isMounted = true;
 
-    // Berlangganan data Firestore secara Real-time
-    const unsubscribe = onSnapshot(docRef, (documentSnapshot) => {
-      if (documentSnapshot.exists()) {
-        const data = documentSnapshot.data();
+    const loadData = async () => {
+      const result = await fetchSensorData();
+      
+      if (isMounted) {
+        if (result.success) {
+          // 1. Dapatkan waktu saat ini untuk label X-Axis (Format HH:mm:ss)
+          const now = new Date();
+          const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-        // 1. Dapatkan waktu saat ini untuk label X-Axis (Format HH:mm:ss)
-        const now = new Date();
-        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+          // 2. Ekstrak nilai angka dari struktur data baru Axios (apiService.js)
+          const distanceVal = parseFloat(result.data.ultrasonic.distance) || 0;
+          const infraredVal = parseFloat(result.data.tcrt.value) || 0;
+          const accXVal = parseFloat(result.data.mpu.accX) || 0;
+          const accYVal = parseFloat(result.data.mpu.accY) || 0;
 
-        // 2. Ekstrak nilai angka dari string database (misal "24.7 cm" -> 24.7 atau "0.04g" -> 0.04)
-        const rawDistance = data.ultrasonic?.distance || "0";
-        const distanceVal = parseFloat(rawDistance);
-
-        const rawInfrared = data.tcrt?.value || "0";
-        const infraredVal = parseFloat(rawInfrared);
-
-        const rawAccX = data.mpu?.accX || "0";
-        const accXVal = parseFloat(rawAccX);
-
-        const rawAccY = data.mpu?.accY || "0";
-        const accYVal = parseFloat(rawAccY);
-
-        // 3. Masukkan data baru ke dalam array state dan buang data terlama (Rolling FIFO Buffer)
-        setLabelsTime((prev) => [...prev.slice(1), timeString]);
-        setUltrasonicHistory((prev) => [...prev.slice(1), distanceVal]);
-        setInfraredHistory((prev) => [...prev.slice(1), infraredVal]);
-        setAccXHistory((prev) => [...prev.slice(1), accXVal]);
-        setAccYHistory((prev) => [...prev.slice(1), accYVal]);
-      } else {
-        console.log('Dokumen tidak ditemukan di Firestore!');
+          // 3. Masukkan data baru ke dalam array state dan buang data terlama (Rolling FIFO Buffer)
+          setLabelsTime((prev) => [...prev.slice(1), timeString]);
+          setUltrasonicHistory((prev) => [...prev.slice(1), distanceVal]);
+          setInfraredHistory((prev) => [...prev.slice(1), infraredVal]);
+          setAccXHistory((prev) => [...prev.slice(1), accXVal]);
+          setAccYHistory((prev) => [...prev.slice(1), accYVal]);
+        }
+        setLoading(false);
       }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching grafik data: ", error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    // Panggil data pertama kali saat layar dibuka
+    loadData();
+
+    // Buat interval untuk memperbarui grafik setiap 3 detik
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 3000);
+
+    // Bersihkan interval saat pindah layar
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Format data objek untuk dimasukkan ke komponen LineChart kit
@@ -117,7 +116,7 @@ const GrafikScreen = ({ navigation }) => {
             <Text style={styles.eyebrowText}>VISUALISASI DATA</Text>
           </View>
           <Text style={styles.mainTitle}>Grafik Sensor</Text>
-          <Text style={styles.subTitleText}>Tren data dari Firebase secara real-time</Text>
+          <Text style={styles.subTitleText}>Tren data API secara real-time</Text>
         </View>
 
         {/* Cek status loading saat aplikasi pertama kali membaca data Firebase */}
@@ -172,7 +171,7 @@ const GrafikScreen = ({ navigation }) => {
   );
 };
 
-// Stylesheet desain asli milik Anda
+// Stylesheet desain asli dikembalikan ke sini
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,

@@ -2,43 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import MainLayout from './MainLayout'; 
 
-// Import konfigurasi database Anda
-import { db } from '../firebaseConfig'; 
-import { doc, onSnapshot } from "firebase/firestore"; 
+// Import fungsi Axios (Pastikan path-nya sudah benar)
+import { fetchSensorData } from '../services/apiService'; 
 
 const DashboardScreen = ({ navigation }) => {
   const systemStatus = {
-    broker: "Connected (HiveMQ)",
-    sync: "Up to date (Firebase)",
+    broker: "Connected (Axios Polling)", 
+    sync: "Up to date (REST API)",
     latency: "42ms",
   };
 
-  // State untuk menyimpan data sensor dari Firestore
   const [sensorData, setSensorData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Menghubungkan ke collection 'sensors' dan document 'data sensor'
-    const docRef = doc(db, 'sensors', 'data sensor');
-    
-    // Mendengarkan perubahan di Firestore secara Real-time
-    const unsubscribe = onSnapshot(docRef, 
-      (documentSnapshot) => {
-        if (documentSnapshot.exists()) {
-          setSensorData(documentSnapshot.data());
+    let isMounted = true; 
+
+    // Fungsi untuk menarik data via Axios
+    const loadData = async () => {
+      const result = await fetchSensorData();
+      
+      if (isMounted) {
+        if (result.success) {
+          setSensorData(result.data);
         } else {
-          console.log('Dokumen "data sensor" tidak ditemukan di Firestore!');
+          console.log(result.message);
         }
         setLoading(false);
-      },
-      (error) => {
-        console.error("Error mengambil data Firestore: ", error);
-        setLoading(false);
       }
-    );
+    };
 
-    // Memutus koneksi listener saat keluar dari halaman untuk menghemat kuota Firebase
-    return () => unsubscribe();
+    // 1. Panggil pertama kali saat layar dibuka
+    loadData();
+
+    // 2. Buat interval untuk memanggil data setiap 3 detik
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 3000);
+
+    // 3. Bersihkan interval saat pindah layar
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   return (
@@ -57,7 +63,7 @@ const DashboardScreen = ({ navigation }) => {
           </View>
           <Text style={styles.mainTitle}>System Overview</Text>
           <Text style={styles.subTitleText}>
-            Firebase Sync: {systemStatus.sync} • Latency: {systemStatus.latency}
+            REST API Sync: {systemStatus.sync} • Latency: {systemStatus.latency}
           </Text>
         </View>
 
@@ -73,13 +79,11 @@ const DashboardScreen = ({ navigation }) => {
                 <Text style={styles.cardDot}>•</Text>
                 <Text style={styles.cardEyebrow}>HC-SR04 ULTRASONIC</Text>
               </View>
-              {/* Mengambil field 'distance' di dalam map 'ultrasonic' */}
               <Text style={styles.sensorValue}>
-                {sensorData.ultrasonic?.distance || '-'}
+                {sensorData.ultrasonic?.distance || '0'} cm
               </Text>
-              {/* Mengambil field 'status' di dalam map 'ultrasonic' */}
               <Text style={styles.sensorSubText}>
-                Status: {sensorData.ultrasonic?.status || '-'}
+                Status: {sensorData.ultrasonic?.status || 'Unknown'}
               </Text>
             </View>
 
@@ -89,13 +93,11 @@ const DashboardScreen = ({ navigation }) => {
                 <Text style={styles.cardDot}>•</Text>
                 <Text style={styles.cardEyebrow}>TCRT5000 INFRARED</Text>
               </View>
-              {/* Mengambil field 'value' di dalam map 'tcrt' */}
               <Text style={styles.sensorValue}>
-                {sensorData.tcrt?.value || '-'}
+                {sensorData.tcrt?.value || '0'}
               </Text>
-              {/* Mengambil field 'condition' di dalam map 'tcrt' */}
               <Text style={styles.sensorSubText}>
-                Condition: {sensorData.tcrt?.condition || '-'}
+                Condition: {sensorData.tcrt?.condition || 'Unknown'}
               </Text>
             </View>
 
@@ -108,19 +110,19 @@ const DashboardScreen = ({ navigation }) => {
               <View style={styles.mpuGridRow}>
                 <View style={styles.mpuGridItem}>
                   <Text style={styles.mpuLabel}>ACCEL X</Text>
-                  <Text style={styles.mpuValue}>{sensorData.mpu?.accX || '-'}</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accX || '0'}</Text>
                 </View>
                 <View style={styles.mpuGridItem}>
                   <Text style={styles.mpuLabel}>ACCEL Y</Text>
-                  <Text style={styles.mpuValue}>{sensorData.mpu?.accY || '-'}</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accY || '0'}</Text>
                 </View>
                 <View style={styles.mpuGridItem}>
                   <Text style={styles.mpuLabel}>ACCEL Z</Text>
-                  <Text style={styles.mpuValue}>{sensorData.mpu?.accZ || '-'}</Text>
+                  <Text style={styles.mpuValue}>{sensorData.mpu?.accZ || '0'}</Text>
                 </View>
               </View>
               <Text style={styles.sensorSubText}>
-                Gyroscope Rotation X: {sensorData.mpu?.gyroX || '-'}
+                Gyroscope Rotation X: {sensorData.mpu?.gyroX || '0'}
               </Text>
             </View>
 
@@ -133,7 +135,7 @@ const DashboardScreen = ({ navigation }) => {
   );
 };
 
-// Desain UI Stylesheet asli milik Anda
+// Desain UI Stylesheet dikembalikan ke sini
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,

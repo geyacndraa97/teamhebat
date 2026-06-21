@@ -12,61 +12,69 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import MainLayout from './MainLayout';
 
-// IMPORT FIREBASE MODULES
-import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db } from '../firebaseConfig'; // Sesuaikan path ini jika firebaseConfig.js ada di luar folder screens
+// IMPORT FUNGSI AXIOS KITA
+import { fetchSensorData } from '../services/apiService';
 
 const DataLogScreen = ({ navigation }) => {
   const [logData, setLogData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // FUNGSI UNTUK MENGAMBIL DATA REAL-TIME DARI FIRESTORE
   useEffect(() => {
-    const q = query(collection(db, 'sensor_logs'));
+    let isMounted = true;
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedLogs = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-
-          // Memaksa format waktu pakai titik dua (menangani masalah 16.37.37 jadi 16:37:37)
-          const formattedTime = data.time ? data.time.replace(/\./g, ':') : '-';
+    const loadData = async () => {
+      const result = await fetchSensorData();
+      
+      if (isMounted) {
+        if (result.success) {
+          const now = new Date();
+          // Format waktu misal 16:37:05
+          const formattedTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
           
-          // Menambahkan satuan secara otomatis berdasarkan nama sensor (Opsional)
-          let formattedValue = data.value ? data.value : '-';
-          const sensorName = data.sensor ? data.sensor.toLowerCase() : '';
-          
-          if (sensorName.includes('ultrasonic') && !formattedValue.includes('cm')) {
-            formattedValue += ' cm';
-          } else if (sensorName.includes('infrared')) {
-            // Infrared biasanya tidak butuh satuan di contohmu
-          }
+          // Mengubah data tunggal API menjadi array format log
+          const newLogs = [
+            {
+              id: `ultrasonic-${now.getTime()}`,
+              time: formattedTime,
+              sensor: 'Ultrasonic',
+              value: `${result.data.ultrasonic.distance} cm`
+            },
+            {
+              id: `tcrt-${now.getTime()}`,
+              time: formattedTime,
+              sensor: 'Infrared (TCRT)',
+              value: result.data.tcrt.value.toString()
+            },
+            {
+              id: `mpu-${now.getTime()}`,
+              time: formattedTime,
+              sensor: 'MPU (AccX)',
+              value: result.data.mpu.accX.toString()
+            }
+          ];
 
-          fetchedLogs.push({
-            id: doc.id,
-            time: formattedTime,
-            sensor: data.sensor || '-',
-            value: formattedValue,
+          // Menambahkan log baru ke log lama, dibatasi maksimal 100 log agar memori tidak penuh
+          setLogData(prevLogs => {
+            const updatedLogs = [...newLogs, ...prevLogs];
+            return updatedLogs.slice(0, 100); 
           });
-        });
-
-        // Urutkan data dari waktu terbaru ke terlama berdasarkan field 'time'
-        fetchedLogs.sort((a, b) => b.time.localeCompare(a.time));
-
-        setLogData(fetchedLogs);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching Firestore:", error);
-        Alert.alert('Error', 'Gagal mengambil data sensor dari database.');
+        }
         setLoading(false);
       }
-    );
+    };
 
-    // Cleanup listener saat pindah screen
-    return () => unsubscribe();
+    // Panggil pertama kali
+    loadData();
+
+    // Polling setiap 3 detik
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   const downloadCSV = async () => {
@@ -74,29 +82,43 @@ const DataLogScreen = ({ navigation }) => {
       Alert.alert('Peringatan', 'Tidak ada data untuk diunduh.');
       return;
     }
-    let csvString = 'Waktu,Nama Sensor,Nilai Pembacaan\n';
-    logData.forEach((item) => {
-      const safeValue = item.value.replace(/,/g, '.');
-      csvString += `${item.time},${item.sensor},${safeValue}\n`;
-    });
-    const fileUri = FileSystem.documentDirectory + 'Log_Sensor_Gateway.csv';
+
     try {
+      let csvString = 'Waktu,Nama Sensor,Nilai Pembacaan\n';
+      
+      logData.forEach((item) => {
+        // PENCEGAHAN CRASH: Pastikan semua data dikonversi ke String terlebih dahulu
+        const safeTime = item.time ? String(item.time) : '-';
+        const safeSensor = item.sensor ? String(item.sensor).replace(/,/g, ' ') : '-';
+        const safeValue = item.value ? String(item.value).replace(/,/g, '.') : '-';
+        
+        csvString += `${safeTime},${safeSensor},${safeValue}\n`;
+      });
+
+      // Gunakan nama file unik dengan timestamp agar tidak bentrok dengan cache file lama
+      const fileName = `Log_Sensor_Gateway_${Date.now()}.csv`;
+      const fileUri = FileSystem.documentDirectory + fileName;
+
+      // Menulis string menjadi file CSV di penyimpanan lokal aplikasi
       await FileSystem.writeAsStringAsync(fileUri, csvString, {
         encoding: FileSystem.EncodingType.UTF8,
       });
+
+      // Memeriksa apakah fitur sharing tersedia di perangkat
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
+        // Membuka jendela pop-up unduh / berbagi bawaan HP
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
           dialogTitle: 'Unduh Data Log Sensor',
-          UTI: 'public.comma-separated-values-text',
+          UTI: 'public.comma-separated-values-text', // Format khusus untuk iOS
         });
       } else {
-        Alert.alert('Error', 'Fitur unduh tidak didukung di perangkat ini.');
+        Alert.alert('Error', 'Fitur unduh/berbagi tidak didukung di perangkat ini.');
       }
     } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Gagal membuat file CSV.');
+      console.error("Detail Error CSV:", error);
+      Alert.alert('Error', 'Gagal membuat atau mengunduh file CSV.');
     }
   };
 
@@ -110,22 +132,19 @@ const DataLogScreen = ({ navigation }) => {
 
   return (
     <MainLayout navigation={navigation} activeMenu="DataLog">
-      {/* Header Section */}
       <View style={styles.headerContainer}>
         <View style={styles.eyebrowContainer}>
           <Text style={styles.eyebrowDot}>•</Text>
-          <Text style={styles.eyebrowText}>FIRESTORE DATABASE</Text>
+          <Text style={styles.eyebrowText}>SESSION DATA LOG</Text>
         </View>
         <Text style={styles.mainTitle}>Data Log</Text>
-        <Text style={styles.subTitleText}>Riwayat pembacaan sensor secara real-time</Text>
+        <Text style={styles.subTitleText}>Riwayat pembacaan sensor sesi ini</Text>
       </View>
 
-      {/* Tombol Unduh CSV */}
       <TouchableOpacity style={styles.downloadButton} onPress={downloadCSV} activeOpacity={0.8}>
         <Text style={styles.downloadButtonText}>Unduh File CSV (.csv)</Text>
       </TouchableOpacity>
 
-      {/* Tabel Log */}
       <View style={styles.tableContainer}>
         <View style={styles.tableHeader}>
           <Text style={[styles.headerText, styles.colTime]}>Waktu</Text>
@@ -133,11 +152,10 @@ const DataLogScreen = ({ navigation }) => {
           <Text style={[styles.headerText, styles.colValue]}>Nilai</Text>
         </View>
         
-        {/* Indikator Loading Data */}
-        {loading ? (
+        {loading && logData.length === 0 ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#CF4500" />
-            <Text style={styles.loadingText}>Menarik data dari database...</Text>
+            <Text style={styles.loadingText}>Menarik data dari server...</Text>
           </View>
         ) : (
           <FlatList
@@ -156,6 +174,7 @@ const DataLogScreen = ({ navigation }) => {
   );
 };
 
+// Desain UI Stylesheet dikembalikan sesuai versi lama
 const styles = StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 24,
@@ -245,7 +264,7 @@ const styles = StyleSheet.create({
   cellText: {
     fontSize: 14,
     color: '#696969',
-    textTransform: 'capitalize', // Biar 'ultrasonic' jadi 'Ultrasonic'
+    textTransform: 'capitalize', 
   },
   cellValue: {
     fontSize: 15,
