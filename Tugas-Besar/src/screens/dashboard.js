@@ -2,23 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import MainLayout from './MainLayout'; 
 
-// Import fungsi Axios (Pastikan path-nya sudah benar)
+// Import fungsi Axios
 import { fetchSensorData } from '../services/apiService'; 
 
 const DashboardScreen = ({ navigation }) => {
   const systemStatus = {
     broker: "Connected (Axios Polling)", 
     sync: "Up to date (REST API)",
-    latency: "42ms",
+    latency: "42ms", 
   };
 
   const [sensorData, setSensorData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     let isMounted = true; 
 
-    // Fungsi untuk menarik data via Axios
     const loadData = async () => {
       const result = await fetchSensorData();
       
@@ -32,28 +32,61 @@ const DashboardScreen = ({ navigation }) => {
       }
     };
 
-    // 1. Panggil pertama kali saat layar dibuka
     loadData();
 
-    // 2. Buat interval untuk memanggil data setiap 3 detik
     const intervalId = setInterval(() => {
       loadData();
     }, 3000);
 
-    // 3. Bersihkan interval saat pindah layar
     return () => {
       isMounted = false;
       clearInterval(intervalId);
     };
   }, []);
 
+  const handleScroll = (event) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (offsetY > 50 && !isScrolled) {
+      setIsScrolled(true);
+    } else if (offsetY <= 50 && isScrolled) {
+      setIsScrolled(false);
+    }
+  };
+
+  // --- LOGIKA GAUGE METER ULTRASONIC ---
+  const rawDistance = parseFloat(sensorData?.ultrasonic?.distance) || 0;
+  const gaugePercentage = Math.min(100, Math.max(0, rawDistance));
+  let gaugeColor = '#4CAF50'; // Hijau
+  if (rawDistance < 15) {
+    gaugeColor = '#CF4500'; // Merah
+  } else if (rawDistance <= 40) {
+    gaugeColor = '#F37338'; // Oranye
+  }
+
+  // --- LOGIKA KONDISI TCRT5000 (HITAM / PUTIH) ---
+  // Mengambil nilai TCRT, baik itu format string ("1") maupun angka (1)
+  const tcrtValue = sensorData?.tcrt?.value;
+  let tcrtConditionDisplay = 'Unknown';
+
+  if (tcrtValue == 1) {
+    tcrtConditionDisplay = 'Hitam';
+  } else if (tcrtValue == 0) {
+    tcrtConditionDisplay = 'Putih';
+  }
+
   return (
     <MainLayout 
       navigation={navigation} 
       activeMenu="Dashboard" 
       systemStatus={systemStatus.broker}
+      hideTopBar={isScrolled} 
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer} 
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}       
+        scrollEventThrottle={16}      
+      >
         
         {/* Header Section */}
         <View style={styles.headerSection}>
@@ -85,19 +118,37 @@ const DashboardScreen = ({ navigation }) => {
               <Text style={styles.sensorSubText}>
                 Status: {sensorData.ultrasonic?.status || 'Unknown'}
               </Text>
+
+              {/* Komponen Linear Gauge Meter */}
+              <View style={styles.gaugeContainer}>
+                <View style={styles.gaugeBackground}>
+                  <View 
+                    style={[
+                      styles.gaugeFill, 
+                      { width: `${gaugePercentage}%`, backgroundColor: gaugeColor }
+                    ]} 
+                  />
+                </View>
+                <View style={styles.gaugeLabels}>
+                  <Text style={styles.gaugeLabelText}>0</Text>
+                  <Text style={styles.gaugeLabelText}>50</Text>
+                  <Text style={styles.gaugeLabelText}>100+</Text>
+                </View>
+              </View>
             </View>
 
-            {/* CARD 2: TCRT5000 INFRARED */}
+            {/* CARD 2: TCRT5000 INFRARED (UPDATED LOGIC) */}
             <View style={styles.sensorCard}>
               <View style={styles.cardEyebrowRow}>
                 <Text style={styles.cardDot}>•</Text>
                 <Text style={styles.cardEyebrow}>TCRT5000 INFRARED</Text>
               </View>
               <Text style={styles.sensorValue}>
-                {sensorData.tcrt?.value || '0'}
+                {tcrtValue !== undefined ? tcrtValue : '0'}
               </Text>
               <Text style={styles.sensorSubText}>
-                Condition: {sensorData.tcrt?.condition || 'Unknown'}
+                {/* Menggunakan variabel yang sudah di-override logikanya di atas */}
+                Condition: {tcrtConditionDisplay}
               </Text>
             </View>
 
@@ -135,11 +186,11 @@ const DashboardScreen = ({ navigation }) => {
   );
 };
 
-// Desain UI Stylesheet dikembalikan ke sini
+// Desain UI Stylesheet
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
-    paddingTop: 65,
+    paddingTop: 80, 
     paddingBottom: 48,
   },
   headerSection: {
@@ -215,6 +266,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
+  
+  // --- STYLE UNTUK GAUGE METER ---
+  gaugeContainer: {
+    marginTop: 24,
+  },
+  gaugeBackground: {
+    height: 12,
+    backgroundColor: '#F3F0EE', 
+    borderRadius: 999,
+    overflow: 'hidden', 
+  },
+  gaugeFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  gaugeLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 2,
+  },
+  gaugeLabelText: {
+    fontSize: 10,
+    color: '#A0A0A0',
+    fontWeight: '600',
+  },
+
   mpuGridRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

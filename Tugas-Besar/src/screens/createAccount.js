@@ -12,8 +12,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
-// Import modul Firestore dan konfigurasi database Anda
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+// REVISI IMPORT: Tambahkan doc dan setDoc
+import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig'; 
 
 const CreateAccount = ({ navigation }) => {
@@ -54,9 +54,13 @@ const CreateAccount = ({ navigation }) => {
       }
 
       // 4. Menyimpan data user baru ke koleksi 'users' di Firestore
-      await addDoc(collection(db, 'users'), {
+      // REVISI: Menggunakan setDoc agar ID dokumen sama dengan username
+      // Format di Firestore akan menjadi: users/{username}
+      const userDocRef = doc(db, 'users', formattedUsername);
+      
+      await setDoc(userDocRef, {
         username: formattedUsername,
-        password: password, // Untuk keamanan produksi, disarankan menggunakan enkripsi/hashing
+        password: password, 
         createdAt: new Date().toISOString()
       });
 
@@ -155,7 +159,8 @@ const styles = StyleSheet.create({
   keyboardAvoid: { flex: 1 },
   container: { flex: 1, paddingHorizontal: 32, justifyContent: 'center' },
   headerContainer: { marginBottom: 40 },
-  backButton: { marginBottom: 20, selfAlign: 'flex-start' },
+  // REVISI BUG: selfAlign diubah menjadi alignSelf
+  backButton: { marginBottom: 20, alignSelf: 'flex-start' },
   backButtonText: { color: '#CF4500', fontSize: 14, fontWeight: '600' },
   eyebrowContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   eyebrowDot: { color: '#CF4500', fontSize: 16, fontWeight: '700', marginRight: 8 },

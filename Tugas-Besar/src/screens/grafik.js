@@ -17,6 +17,9 @@ const GrafikScreen = ({ navigation }) => {
   const [accYHistory, setAccYHistory] = useState([0, 0, 0, 0, 0]);
   
   const [loading, setLoading] = useState(true);
+  
+  // State baru untuk mendeteksi scroll
+  const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,6 +65,16 @@ const GrafikScreen = ({ navigation }) => {
     };
   }, []);
 
+  // Fungsi untuk menangani deteksi scroll
+  const handleScroll = (event) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (offsetY > 50 && !isScrolled) {
+      setIsScrolled(true);
+    } else if (offsetY <= 50 && isScrolled) {
+      setIsScrolled(false);
+    }
+  };
+
   // Format data objek untuk dimasukkan ke komponen LineChart kit
   const dataUltrasonic = {
     labels: labelsTime,
@@ -106,8 +119,17 @@ const GrafikScreen = ({ navigation }) => {
   const chartWidth = width - 48 - 48; 
 
   return (
-    <MainLayout navigation={navigation} activeMenu="Grafik">
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+    <MainLayout 
+      navigation={navigation} 
+      activeMenu="Grafik"
+      hideTopBar={isScrolled} // Mengirimkan status scroll ke MainLayout
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer} 
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll} // Memanggil fungsi deteksi scroll
+        scrollEventThrottle={16} // Mengatur agar deteksi scroll mulus
+      >
         
         {/* Header Section */}
         <View style={styles.headerSection}>
@@ -175,7 +197,7 @@ const GrafikScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
-    paddingTop: 65,
+    paddingTop: 50,
     paddingBottom: 48,
   },
   headerSection: {

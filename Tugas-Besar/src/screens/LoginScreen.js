@@ -14,10 +14,10 @@ import {
 
 // Import modul Firestore dan konfigurasi database Anda
 import { collection, query, where, getDocs } from 'firebase/firestore';
+// REVISI 1: Jalur import db sesuai yang Anda minta
 import { db } from '../firebaseConfig'; 
 
 const LoginScreen = ({ navigation }) => {
-  // 1. Mengubah state 'email' menjadi 'username'
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -36,7 +36,7 @@ const LoginScreen = ({ navigation }) => {
       // Hilangkan spasi berlebih jika pengguna tidak sengaja mengetik spasi
       const formattedUsername = username.trim();
 
-      // 2. Query ke Firebase: Mencari berdasarkan field 'username' dan 'password'
+      // Query ke Firebase: Mencari berdasarkan field 'username' dan 'password'
       const q = query(
         collection(db, 'users'),
         where('username', '==', formattedUsername),
@@ -64,10 +64,6 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  const handleForgotPassword = () => {
-    Alert.alert('Informasi', 'Fitur Lupa Kata Sandi belum diimplementasikan.');
-  };
-
   const toggleRememberMe = () => {
     setRememberMe(!rememberMe);
   };
@@ -93,7 +89,7 @@ const LoginScreen = ({ navigation }) => {
           <View style={styles.formContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Username" // 3. Mengubah placeholder UI menjadi Username
+              placeholder="Username" 
               placeholderTextColor="#696969"
               value={username}
               onChangeText={setUsername}
@@ -142,11 +138,14 @@ const LoginScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
 
+            {/* REVISI 2 & 3: Menghapus Forgot Password & menambah tombol Create Account (English) */}
             <TouchableOpacity
               style={styles.linkContainer}
-              onPress={handleForgotPassword}
+              onPress={() => navigation.navigate('createAccount')}
             >
-              <Text style={styles.linkText}>Forgot Password?</Text>
+              <Text style={styles.linkText}>
+                Don't have an account? <Text style={styles.linkTextBold}>Create Account</Text>
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -277,6 +276,10 @@ const styles = StyleSheet.create({
     color: '#696969', 
     fontSize: 14,
     fontWeight: '500',
+  },
+  linkTextBold: {
+    color: '#141413',
+    fontWeight: '700',
     textDecorationLine: 'underline',
   },
 });
